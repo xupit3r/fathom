@@ -1,5 +1,6 @@
 (ns fathom.facts
-  "Fact base operations")
+  "Fact base operations"
+  (:require [fathom.pattern :as pattern]))
 
 (defn fact-base
   "Create a fact base"
@@ -50,4 +51,4 @@
 (defn query
   "Query fact base with pattern"
   [fb pattern]
-  [])
+  (pattern/match pattern @fb))

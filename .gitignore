@@ -1,0 +1,6 @@
+.clj-kondo/
+target/
+*.class
+*.jar
+*.swp
+*~
