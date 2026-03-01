@@ -2,7 +2,7 @@
   "Pattern matching")
 
 (defn is-var?
-  "Check if term is a variable"
+  "Check if term is a variable (symbol starting with ?)"
   [term]
   (and (symbol? term)
        (some? (re-find #"^\?" (name term)))))

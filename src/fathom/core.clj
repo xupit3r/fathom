@@ -22,6 +22,11 @@
   [engine]
   @(:facts engine))
 
+(defn rules
+  "Get all rules from engine"
+  [engine]
+  @(:rules engine))
+
 (defn assert!
   "Add facts to engine"
   ([engine fact]
@@ -51,7 +56,7 @@
       [{}]
       (let [all-bindings (atom [{}])]
         (doseq [ante antecedents]
-          (let [matches (pattern/match [ante] facts)]
+          (let [matches (pattern/match ante facts)]
             (when (seq matches)
               (let [new-bindings (for [b1 @all-bindings
                                        b2 matches]
@@ -93,16 +98,30 @@
                (swap! (:facts engine) into @new-facts)
                (recur (inc step) @(:facts engine))))))))))
 
+(defn- prove*
+  "Internal prove with depth tracking"
+  [engine goal subst depth]
+  (let [config @(:config engine)
+        max-depth (:max-depth config)
+        facts @(:facts engine)
+        rules @(:rules engine)]
+    (if (>= depth max-depth)
+      []
+      (let [goal (unify/apply-subst goal subst)
+            ;; Try facts first
+            fact-matches (pattern/match goal facts)
+            fact-proofs (map (fn [bindings]
+                               {:bindings (unify/compose-subst subst bindings)
+                                :proof [:fact goal]})
+                             fact-matches)]
+        fact-proofs))))
+
 (defn prove
   "Prove a goal using backward chaining"
   ([engine goal]
    (prove engine goal {}))
   ([engine goal subst]
-   (let [facts @(:facts engine)]
-     (map (fn [bindings]
-            {:bindings bindings
-             :proof [:fact (pattern/bind goal bindings)]})
-          (pattern/match [goal] facts subst)))))
+   (prove* engine goal subst 0)))
 
 (defn prove-one
   "Prove a goal, returning first proof"
@@ -116,8 +135,13 @@
   ([engine goal]
    (ask engine goal {}))
   ([engine goal opts]
-   (let [facts @(:facts engine)]
-     (pattern/match goal facts))))
+   (let [results (prove engine goal)]
+     (map :bindings results))))
+
+(defn explain
+  "Explain how a goal was proven"
+  [engine goal]
+  (prove engine goal))
 
 (defn configure!
   "Configure engine behavior"
