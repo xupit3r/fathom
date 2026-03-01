@@ -1,21 +1,22 @@
 (ns fathom.core
   "Main inference engine API"
   (:require [fathom.pattern :as pattern]
-            [fathom.unify :as unify]))
+            [fathom.unify :as unify]
+            [fathom.backward :as backward]))
 
 (defn make-engine
   "Create a new inference engine"
   ([]
-   (make-engine #{} []))
+    (make-engine #{} []))
   ([facts]
-   (make-engine facts []))
+    (make-engine facts []))
   ([facts rules]
-   {:facts (atom (set facts))
-    :rules (atom (vec rules))
-    :config (atom {:strategy :depth-first
-                   :max-depth 10
-                   :max-steps 1000
-                   :conflict-resolution :mrs})}))
+    {:facts (atom (set facts))
+     :rules (atom (vec rules))
+     :config (atom {:strategy :depth-first
+                    :max-depth 10
+                    :max-steps 1000
+                    :conflict-resolution :mrs})}))
 
 (defn facts
   "Get current facts from engine"
@@ -30,11 +31,11 @@
 (defn assert!
   "Add facts to engine"
   ([engine fact]
-   (swap! (:facts engine) conj fact)
-   engine)
+    (swap! (:facts engine) conj fact)
+    engine)
   ([engine fact & more-facts]
-   (apply swap! (:facts engine) conj (cons fact more-facts))
-   engine))
+    (apply swap! (:facts engine) conj (cons fact more-facts))
+    engine))
 
 (defn add-rule!
   "Add a rule to engine"
@@ -48,7 +49,7 @@
   (swap! (:facts engine) disj fact)
   engine)
 
-(defn- match-rule
+(defn match-rule
   "Match a rule's antecedents against facts"
   [rule facts]
   (let [antecedents (:when rule)]
@@ -60,16 +61,16 @@
             (when (seq matches)
               (let [new-bindings (for [b1 @all-bindings
                                        b2 matches]
-                                   (merge b1 b2))]
+                                  (merge b1 b2))]
                 (reset! all-bindings new-bindings)))))
         @all-bindings))))
 
-(defn- apply-consequent
+(defn apply-consequent
   "Apply consequent with bindings"
   [consequent bindings]
   (pattern/bind consequent bindings))
 
-(defn- fire-rule
+(defn fire-rule
   "Fire a rule with given bindings"
   [rule bindings]
   (let [consequents (:then rule)]
@@ -78,79 +79,53 @@
 (defn run-forward!
   "Run forward chaining to fixed point"
   ([engine]
-   (run-forward! engine {}))
+    (run-forward! engine {}))
   ([engine opts]
-   (let [max-steps (or (:max-steps opts) 1000)
-         rules @(:rules engine)]
-     (loop [step 0
-            current-facts @(:facts engine)]
-       (if (>= step max-steps)
-         engine
-         (let [new-facts (atom #{})]
-           (doseq [rule rules
-                   bindings (match-rule rule current-facts)]
-             (doseq [result (fire-rule rule bindings)]
-               (when-not (contains? current-facts result)
-                 (swap! new-facts conj result))))
-           (if (empty? @new-facts)
-             engine
-             (do
-               (swap! (:facts engine) into @new-facts)
-               (recur (inc step) @(:facts engine))))))))))
-
-(defn- prove*
-  "Internal prove with depth tracking"
-  [engine goal subst depth]
-  (let [config @(:config engine)
-        max-depth (:max-depth config)
-        facts @(:facts engine)
-        rules @(:rules engine)]
-    (if (>= depth max-depth)
-      []
-      (let [goal (unify/apply-subst goal subst)
-            ;; Try facts first
-            fact-matches (pattern/match goal facts)
-            fact-proofs (map (fn [bindings]
-                               {:bindings (unify/compose-subst subst bindings)
-                                :proof [:fact goal]})
-                             fact-matches)]
-        fact-proofs))))
+    (let [max-steps (or (:max-steps opts) 1000)
+          rules @(:rules engine)]
+      (loop [step 0
+             current-facts @(:facts engine)]
+        (if (>= step max-steps)
+          engine
+          (let [new-facts (atom #{})]
+            (doseq [rule rules
+                    bindings (match-rule rule current-facts)]
+              (doseq [result (fire-rule rule bindings)]
+                (when-not (contains? current-facts result)
+                  (swap! new-facts conj result))))
+            (if (empty? @new-facts)
+              engine
+              (do
+                (swap! (:facts engine) into @new-facts)
+                (recur (inc step) @(:facts engine))))))))))
 
 (defn prove
-  "Prove a goal using backward chaining"
+  "Prove a goal using backward chaining
+  Returns seq of proof maps with bindings, path, goal, node
+  Options:
+    {:trace boolean
+     :max-depth integer}"
   ([engine goal]
-   (prove engine goal {}))
-  ([engine goal subst]
-   (prove* engine goal subst 0)))
+    (prove engine goal {}))
+  ([engine goal opts]
+    (backward/prove engine goal opts)))
 
 (defn prove-one
   "Prove a goal, returning first proof"
   ([engine goal]
-   (prove-one engine goal {}))
-  ([engine goal subst]
-   (first (prove engine goal subst))))
+    (prove-one engine goal {}))
+  ([engine goal opts]
+    (first (prove engine goal opts))))
 
 (defn ask
   "Query engine with goal pattern"
   ([engine goal]
-   (ask engine goal {}))
+    (ask engine goal {}))
   ([engine goal opts]
-   (let [results (prove engine goal)]
-     (map :bindings results))))
+    (let [results (prove engine goal)]
+      (map :bindings results))))
 
 (defn explain
   "Explain how a goal was proven"
   [engine goal]
-  (prove engine goal))
-
-(defn configure!
-  "Configure engine behavior"
-  [engine option value]
-  (swap! (:config engine) assoc option value)
-  engine)
-
-(defn stats
-  "Get engine statistics"
-  [engine]
-  {:facts (count @(:facts engine))
-   :rules (count @(:rules engine))})
+  (backward/explain engine goal))
