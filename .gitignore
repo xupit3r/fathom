@@ -4,3 +4,6 @@ target/
 *.jar
 *.swp
 *~
+.lein-failures
+.nrepl-port
+.calva/repl.calva-repl
